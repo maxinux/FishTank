@@ -36,7 +36,6 @@
 // Configure Ethernet
 byte mac[] = {  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };  // Made Up MAC
 static uint8_t gwip[4] = {192,168,1,1};                // GW IP
-IPAddress server(216,129,119,242);                     // Nizzles
 IPAddress ip(192,168,1,15);                            // Arduino Wiz IP
 EthernetClient client;
 
