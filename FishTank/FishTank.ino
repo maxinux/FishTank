@@ -18,6 +18,7 @@
 #include <SPI.h>        // SinglePinInterface
 #include <Ethernet.h>   // Ethernet and TCP/IP (and UDP)
 #include <HTTPClient.h> // Lazy HTTP Requests
+#include "config.h" 
 
 // Begin Definitions, starting with OneWire Addresses
 #define ADDR1 "28:A0:CA:6F:03:00:00:33"
@@ -27,7 +28,6 @@
 #define ONE_WIRE_BUS 2  // Where are the DS18B20's plugged in 
 #define SENSORS         // OneWire Sensors
 #define DHT11PIN A0     // Where is the DHT11
-#define URISTEM "/Fish/jsonfishtank.php"
 #define DAYLIGHTPIN 5   // Day Light Transistor control of 12v lights
 #define NIGHTLIGHTPIN 6 // Night Light control
 #define DAYLEVEL 96     // Bright lights
@@ -38,7 +38,6 @@ byte mac[] = {  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };  // Made Up MAC
 static uint8_t gwip[4] = {192,168,1,1};                // GW IP
 IPAddress server(216,129,119,242);                     // Nizzles
 IPAddress ip(192,168,1,15);                            // Arduino Wiz IP
-byte mserver[] = { 216,129,119,242 };                  // Remote Server IP
 EthernetClient client;
 
 //OneWire, RTC, DHT11
