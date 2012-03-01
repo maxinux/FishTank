@@ -30,8 +30,8 @@
 #define DHT11PIN A0     // Where is the DHT11
 #define DAYLIGHTPIN 5   // Day Light Transistor control of 12v lights
 #define NIGHTLIGHTPIN 6 // Night Light control
-#define DAYLEVEL 96     // Bright lights
-#define NIGHTLEVEL 32   // Night light
+#define DAYLIGHTLEVEL 96     // Bright lights
+#define NIGHTLIGHTLEVEL 32   // Night light
 
 // Configure Ethernet
 byte mac[] = {  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };  // Made Up MAC
@@ -190,24 +190,24 @@ void checkLights(byte hour, byte phase)
 {
   Serial.println(hour);
   if (hour > 8 && hour <  20)
-    dayLight = DAYLEVEL;
+    dayLight = DAYLIGHTLEVEL;
   else {
        dayLight = 0;
-       nightLight = ((NIGHTLEVEL*phase)+5);    
+       nightLight = NIGHTLIGHTLEVEL/phase;    
   }
   if (dayLight != dayLightState){
     dayLightState=dayLight;
     analogWrite(DAYLIGHTPIN, dayLightState);
   }
    if (nightLight != nightLightState){
-    nightLightState=nightLight;
+    nightLightState=nightLight/phase;
     analogWrite(NIGHTLIGHTPIN, nightLightState);
   }
 }
   
 byte MoonPhase(int days)
 {
-  byte phase=days%4;
+  byte phase=days%4+1;
   return phase;
 }
 
