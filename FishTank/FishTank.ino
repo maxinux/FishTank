@@ -4,7 +4,11 @@
 // Libraries Used:
 // http://www.pjrc.com/teensy/td_libs_OneWire.html
 // http://milesburton.com/Dallas_Temperature_Control_Library
+//
 // Thanks to Skippy for help with the json and charting stuff
+// PH PRobe info to be added some time: 
+//     https://www.atlas-scientific.com/index.php/store#ecwid:category=1812609&mode=product&product=7766829
+//
 ////////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 #define APPNAME "MaxPeppr Aquarium Controller, v 0.1a"
@@ -14,40 +18,20 @@
 #include <OneWire.h>    // Dallas 1-Wire / DS18B20
 #include <Wire.h>       // RTC One Wire Protocol
 #include <RTClib.h>     // RTC Library
-#include <DHT11.h>      // Room Temp
 #include <SPI.h>        // SinglePinInterface
 #include <Ethernet.h>   // Ethernet and TCP/IP (and UDP)
 #include <HTTPClient.h> // Lazy HTTP Requests
-#include "config.h" 
+#include "config.h"     // Configuration options
 
-// Begin Definitions, starting with OneWire Addresses
-#define ADDR1 "28:A0:CA:6F:03:00:00:33"
-#define ADDR2 "28:21:80:A3:03:00:00:91"
-#define ADDR3 "28:E7:73:41:03:00:00:1A"
-
-#define ONE_WIRE_BUS 2  // Where are the DS18B20's plugged in 
-#define SENSORS         // OneWire Sensors
-#define DHT11PIN A0     // Where is the DHT11
-#define DAYLIGHTPIN 5   // Day Light Transistor control of 12v lights
-#define NIGHTLIGHTPIN 6 // Night Light control
-#define DAYLIGHTLEVEL 96     // Bright lights
-#define NIGHTLIGHTLEVEL 32   // Night light
-
-// Configure Ethernet
-byte mac[] = {  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };  // Made Up MAC
-static uint8_t gwip[4] = {192,168,1,1};                // GW IP
-IPAddress ip(192,168,1,15);                            // Arduino Wiz IP
-EthernetClient client;
-
-//OneWire, RTC, DHT11
+//Constructors
 OneWire oneWire(ONE_WIRE_BUS);          // Construct One Wire Bus for Dallas/Maxim ICs and more 
 DallasTemperature sensors(&oneWire);    // Pass our oneWire reference to Dallas Temperature
-DeviceAddress insideThermometer0, insideThermometer1;  // Thermometers
+DeviceAddress tankThermometer, roomThermometer;  // Thermometers
+EthernetClient client;
 RTC_DS1307 RTC;                         // Clock
-dht11 DHT11;                            // Room Temperature/Humidity
 
 // Lights
-byte dayLight, dayLightState, nightLight, nightLightState, nightDirection;
+byte dayLight, dayLightState, nightLight, nightLightState=0, nightDirection=0;
 
 ///////////////////// Begin Program, Starting with Setup \\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
@@ -55,110 +39,45 @@ void setup(void)
 {
   // start serial port
   Serial.begin(57600); // For BT go down to 9600
-  Serial.print(APPNAME);
-  // locate devices on the bus
-  Serial.print("Locating devices...");
+  Serial.println(APPNAME);
+
   sensors.begin();
-  Serial.print("Found ");
-  Serial.print(sensors.getDeviceCount(), DEC);
-  Serial.println(" devices.");
-
-  if (!sensors.getAddress(insideThermometer0, 0)) Serial.println("Unable to find address for Device 0"); 
-  if (!sensors.getAddress(insideThermometer1, 1)) Serial.println("Unable to find address for Device 0");   
+  if (!sensors.getAddress(tankThermometer, 0)) Serial.println("Unable to find address for Device 0"); 
+  if (!sensors.getAddress(roomThermometer, 1)) Serial.println("Unable to find address for Device 1");   
  
-  // show the addresses we found on the bus
-  Serial.print("Device 0 Address: ");
-  printAddress(insideThermometer0);
-  sensors.setResolution(insideThermometer0, 9);
-  Serial.print(" Resolution: ");  
-  Serial.print(sensors.getResolution(insideThermometer0), DEC); 
-  Serial.println();
+  Serial.println("Updating every 10 seconds...");
   
-  Serial.print("Device 1 Address: ");
-  printAddress(insideThermometer1);
-  sensors.setResolution(insideThermometer1, 9);
-  Serial.print(" Resolution: ");  
-  Serial.print(sensors.getResolution(insideThermometer1), DEC); 
-  Serial.println();
-
-  Serial.print("Updating every 10 seconds...");
-  Serial.println();
   // Initialize RTC
   Wire.begin();
   RTC.begin();
+  
   // Initialize Ethernet
   Ethernet.begin(mac, ip, gwip);
+  
   // Begin Light prep
   pinMode(DAYLIGHTPIN, OUTPUT);
   pinMode(NIGHTLIGHTPIN, 0);      
+  analogWrite(DAYLIGHTPIN, 0);  
   analogWrite(NIGHTLIGHTPIN, 0);  
 }
 
 //////////////////////// Begin functions that other stuff calls \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-// function to print the temperature for a device
-float getTemperature(DeviceAddress deviceAddress)
-{
-  float tempC = sensors.getTempC(deviceAddress);
-  return tempC;
-}
 
-// function to print a OneWire address
-void printAddress(DeviceAddress deviceAddress)
-{
-  for (uint8_t i = 0; i < 8; i++)
-  {
-    if (deviceAddress[i] < 16) Serial.print("0");
-    Serial.print(deviceAddress[i], HEX);
-  }
-}
-
-float getRoomTemp(void) { 
-  int chk = DHT11.read(DHT11PIN); 
-  float roomTemp=(float)DHT11.temperature;
-  switch (chk) {
-    case 0:  break;
-    case -1: Serial.println("Checksum error"); break;
-    case -2: Serial.println("Time out error1"); break;
-    default: Serial.println("Unknown error"); break;
-  }
-  return roomTemp;
-}
-
-int getRoomHumidity(void) {  
-  int chk = DHT11.read(DHT11PIN);
-  float roomHumidity= (float)DHT11.humidity ;
-  delay(300);
-  switch (chk) {
-    case 0:  break;
-    case -1: Serial.println("Checksum error"); break;
-    case -2: Serial.println("Time out error2"); break;
-    default: Serial.println("Unknown error"); break;
-  }
-  return roomHumidity;
-}
-
-void jsonPush(float tankTemp0, float tankTemp1, float roomTemp, int roomHumidity) {
+void jsonPush(float tankTemp0, float roomTemp) {
   char output[16];
-  HTTPClient hclient("nizzles.net",mserver);
+  HTTPClient hclient(WEBSERVER, mserver);
   String json = "";
   
-  hclient.debug(true);
+  //hclient.debug(true);
     
   json += "{\"tankTemp0\":";  
     dtostrf(tankTemp0, 10, 5, output); 
     json += output;
   
-    json += ",\"tankTemp1\":";  
-    dtostrf(tankTemp1, 10, 5, output); 
-    json += output;
-  
     json += ",\"roomTemp\":";  
     dtostrf(roomTemp, 10, 5, output); 
     json += output;
-  
-    json += ",\"roomHumidity\":";  
-    dtostrf(roomHumidity, 10, 5, output); 
-    json += output;
+    
   json += "}\n";
 
   char data[json.length()];
@@ -174,23 +93,24 @@ void jsonPush(float tankTemp0, float tankTemp1, float roomTemp, int roomHumidity
     hclient.closeStream(result);
   } 
   else {
-    Serial.println("failed to connect");
+    Serial.println("Failed to connect!");
   }
 
   if (returnCode==200) {
-    Serial.println("data uploaded");
+    Serial.println("Data uploaded.");
   } 
   else {
-    Serial.print("ERROR: Server returned ");
+    Serial.print("ERROR! Server returned:");
     Serial.println(returnCode);
   }
 }
 
 void checkLights(byte hour, byte phase)
 {
-  Serial.println(hour);
-  if (hour > 8 && hour <  20)
+  if (hour > 8 && hour <  20){
+    nightLight = 0;
     dayLight = DAYLIGHTLEVEL;
+  }
   else {
        dayLight = 0;
        nightLight = NIGHTLIGHTLEVEL/phase;    
@@ -208,16 +128,44 @@ void checkLights(byte hour, byte phase)
 byte MoonPhase(int days)
 {
   byte phase=days%4+1;
-  return phase;
+ // return phase;
+ return 2;
 }
+
+/* // http://technology-flow.com/articles/aquarium-lights/
+// Put 4.7k resistor between transistor and arduino
+int moonPhase(int moonYear, int moonMonth, int moonDay)
+{
+  int dayFromYear, dayFromMonth;
+  double julianDay;
+  int phase;
+ 
+  if (moonMonth < 3)			//keep the month before march
+  {
+    moonYear--;			//take away a year
+    moonMonth += 12;		//add an extra 12 months (the year taken away from before)
+  }
+  ++moonMonth;
+  dayFromYear = 365.25 * moonYear; //get days from current year
+  dayFromMonth = 30.6 * moonMonth; //get number of days from the current month
+  julianDay = dayFromYear + dayFromMonth + moonDay - 694039.09; //add them all  
+  julianDay /= 29.53;		//divide by the length of lunar cycle
+  phase = julianDay;		//take integer part
+  julianDay -= phase;		//get rid of the int part
+  phase = julianDay*8 + 0.5;	//get it between 0-8 and round it by adding .5
+  phase = phase & 7;		//get a number between 1-7
+  return phase; 		//1 == new moon, 4 == full moon
+}*/
 
 void loop(void)
 {   
   DateTime now = RTC.now(); //Get new time
   sensors.requestTemperatures(); // Request Temps so we can get them
 
-  jsonPush(getTemperature(insideThermometer0), getTemperature(insideThermometer1),  getRoomTemp(),       getRoomHumidity() );
+  jsonPush(sensors.getTempC(tankThermometer), sensors.getTempC(roomThermometer));
   checkLights(now.hour(), MoonPhase(now.day()));
+  //checkLights(now.hour(), 2);
+ 
   delay(29400); // Wait 30s after two DHT pauses and sensor reads
 }
 
