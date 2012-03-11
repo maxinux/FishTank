@@ -1,6 +1,5 @@
 Pins: 
 Analog
-0 DHT11
 4, 5 RTC
 
 Digital:
